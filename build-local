@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+: <<=cut
+=pod
+
+=head1 NAME
+
+build-local - Build a hassio-cli image locally
+
+=head1 SYNOPSIS
+
+build-local
+
+=head1 CONFIGURATION
+
+The following environment variables are recognized:
+
+=over 4
+
+=item BUILD_ARCH - default to the host architecture
+
+=over 4
+
+=item aarch64
+
+=item amd64
+
+=item armhf
+
+=item armv7
+
+=item i386
+
+=back
+
+=item BUILD_FROM - default taken from build.yaml
+
+=item CLI_BASE - default taken from Dockerfile
+
+=item CLI_VERSION - default taken from build.yaml
+
+=item IMAGE_BASE - default to ghcr.io/home-assistant
+
+=item PLATFORM - default to $BUILD_ARCH
+
+=item RLWRAP_BASE - default taken from Dockerfile
+
+=item RLWRAP_VERSION - default taken from build.yaml
+
+=back
+
+=head1 REQUIREMENTS
+
+yq - jq wrapper for YAML documents, see https://kislyuk.github.io/yq/
+
+=cut
+
+: "${IMAGE_BASE:=ghcr.io/home-assistant}"
+
+if [ -z "$BUILD_ARCH" ]; then
+  BUILDARCH=$(uname -m)
+  case "$BUILDARCH" in
+    aarch64|arm64) BUILD_ARCH=aarch64 ;;
+    armv6l) BUILD_ARCH=armhf ;;
+    armv7l) BUILD_ARCH=armv7 ;;
+    i?86|x86|x86pc) BUILD_ARCH=i386 ;;
+    x86_64) BUILD_ARCH=amd64 ;;
+    *) echo >&2 "Unknown BUILDARCH=$BUILDARCH"; exit 1 ;;
+  esac
+fi
+
+if [ -z "$PLATFORM" ]; then
+  case "$BUILD_ARCH" in
+    aarch64) PLATFORM=linux/arm64 ;;
+    amd64) PLATFORM=linux/$BUILD_ARCH ;;
+    armhf) PLATFORM=linux/arm/v6 ;;
+    armv7) PLATFORM=linux/arm/v7 ;;
+    i386) PLATFORM=linux/386 ;;
+    *) echo >&2 "Unknown BUILD_ARCH=$BUILD_ARCH"; exit 1 ;;
+  esac
+fi
+
+if [ -z "$BUILD_FROM" ]; then
+  BUILD_FROM=$(yq -r ".build_from.$BUILD_ARCH" build.yaml)
+fi
+if [ -z "$CLI_VERSION" ]; then
+  CLI_VERSION=$(yq -r ".args.CLI_VERSION" build.yaml)
+fi
+if [ -z "$RLWRAP_VERSION" ]; then
+  RLWRAP_VERSION=$(yq -r ".args.RLWRAP_VERSION" build.yaml)
+fi
+
+export BUILD_ARCH BUILD_FROM CLI_BASE CLI_VERSION RLWRAP_BASE RLWRAP_VERSION
+docker build \
+  --build-arg BUILD_ARCH \
+  --build-arg BUILD_FROM \
+  --build-arg CLI_BASE \
+  --build-arg CLI_VERSION \
+  --build-arg RLWRAP_BASE \
+  --build-arg RLWRAP_VERSION \
+  --platform "$PLATFORM" \
+  --tag "$IMAGE_BASE"/"$BUILD_ARCH"-hassio-cli \
+  .
